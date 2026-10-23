@@ -1,7 +1,7 @@
 [package]
 name = "lang198x-syntax"
 description = "The shared lossless syntax tree for Lang198x language front ends: source text, tokens, provenance and diagnostics, with no runtime dependencies."
-version = "0.1.1"
+version = "0.1.2"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
