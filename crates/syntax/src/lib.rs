@@ -13,8 +13,8 @@
 //! The crate is at an early stage. Today it provides text positions and
 //! ranges, which everything else is measured in, the kinds that label every
 //! node and token, the tree with its builder, and the handles that move
-//! around a finished tree, diagnostics kept beside it, and snapshot dumps for
-//! testing.
+//! around a finished tree, diagnostics kept beside it, provenance tables that
+//! record where expanded text came from, and snapshot dumps for testing.
 //!
 //! [shared syntax layer decision]: https://github.com/lang198x/lang198x/blob/main/decisions/shared-syntax-layer.md
 
@@ -23,6 +23,7 @@ mod diagnostic;
 mod dump;
 mod kind;
 mod node;
+mod provenance;
 mod snapshot;
 mod text;
 mod tree;
@@ -34,6 +35,9 @@ pub use builder::{BuildError, Checkpoint, TreeBuilder};
 pub use diagnostic::{Diagnostic, DiagnosticKind, DiagnosticOutsideText, Parse};
 pub use kind::SyntaxKind;
 pub use node::{SyntaxElement, SyntaxNode, SyntaxToken, TokenAtOffset};
+pub use provenance::{
+    Expansion, ExpansionBuilder, ExpansionId, FileId, Origin, ProvenanceError, Span, TextId,
+};
 pub use snapshot::{BLESS_VARIABLE, SnapshotError, check_snapshot};
 pub use text::{TextRange, TextSize};
 pub use tree::SyntaxTree;
