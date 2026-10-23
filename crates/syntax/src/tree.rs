@@ -10,6 +10,7 @@
 //! any language.
 
 use std::fmt;
+use std::sync::Arc;
 
 use crate::{SyntaxKind, TextSize};
 
@@ -29,31 +30,85 @@ pub(crate) struct Entry {
 /// A finished syntax tree.
 ///
 /// A tree is built with a [`TreeBuilder`](crate::TreeBuilder) and never
-/// changes afterwards, so it can be shared between threads freely. It holds the
-/// source text, and its tokens cover that text exactly, in order.
-#[derive(Clone, PartialEq, Eq)]
+/// changes afterwards. It holds the source text, and its tokens cover that
+/// text exactly, in order.
+///
+/// A `SyntaxTree` is a shared handle: cloning it is cheap and gives another
+/// handle to the same tree. Every node and token holds one too, so they can be
+/// stored, cached and sent to other threads with no lifetime attached. The
+/// tree is freed when the last handle goes.
+///
+/// Two trees are equal when they hold the same text and the same structure.
+#[derive(Clone)]
 pub struct SyntaxTree {
+    data: Arc<TreeData>,
+}
+
+#[derive(PartialEq, Eq)]
+struct TreeData {
     text: Box<str>,
     entries: Box<[Entry]>,
 }
 
+impl PartialEq for SyntaxTree {
+    fn eq(&self, other: &Self) -> bool {
+        self.is_same_tree(other) || self.data == other.data
+    }
+}
+
+impl Eq for SyntaxTree {}
+
 impl SyntaxTree {
     pub(crate) fn from_parts(text: &str, entries: Vec<Entry>) -> Self {
         Self {
-            text: text.into(),
-            entries: entries.into_boxed_slice(),
+            data: Arc::new(TreeData {
+                text: text.into(),
+                entries: entries.into_boxed_slice(),
+            }),
         }
     }
 
     /// Returns the source text the tree was built from.
     #[must_use]
     pub fn text(&self) -> &str {
-        &self.text
+        &self.data.text
     }
 
-    #[cfg(test)]
+    /// Returns the root node, which spans the whole text.
+    ///
+    /// ```
+    /// use lang198x_syntax::{SyntaxKind, TextSize, TreeBuilder};
+    ///
+    /// let root_kind = SyntaxKind::language(SyntaxKind::FIRST_LANGUAGE)
+    ///     .expect("outside the reserved range");
+    /// let mut builder = TreeBuilder::new("nop");
+    /// builder.start_node(root_kind);
+    /// builder.token(SyntaxKind::VERBATIM, TextSize::new(3));
+    /// builder.finish_node();
+    /// let tree = builder.finish().expect("a valid tree");
+    ///
+    /// let root = tree.root();
+    /// assert_eq!(root.kind(), root_kind);
+    /// assert_eq!(root.text(), "nop");
+    /// ```
+    #[must_use]
+    pub fn root(&self) -> crate::SyntaxNode {
+        crate::SyntaxNode::new(self.clone(), 0)
+    }
+
+    /// Returns `true` if both handles point at the very same tree, not just
+    /// an equal one.
+    pub(crate) fn is_same_tree(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.data, &other.data)
+    }
+
+    /// Hashes which tree this is, for hashing node and token handles.
+    pub(crate) fn hash_identity<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::ptr::hash(Arc::as_ptr(&self.data), state);
+    }
+
     pub(crate) fn entries(&self) -> &[Entry] {
-        &self.entries
+        &self.data.entries
     }
 
     /// Checks every rule a finished tree must keep, and says which one broke.
@@ -61,12 +116,12 @@ impl SyntaxTree {
     /// The builder only produces trees that pass. Tests use this to prove it.
     #[cfg(test)]
     pub(crate) fn check(&self) -> Result<(), String> {
-        let entries = &self.entries;
+        let entries = &self.data.entries;
         let n = u32::try_from(entries.len()).map_err(|_| "too many entries")?;
         let Some(root) = entries.first() else {
             return Err("the tree has no root".into());
         };
-        let text_len = TextSize::of(&self.text).ok_or("the text is too long")?;
+        let text_len = TextSize::of(&self.data.text).ok_or("the text is too long")?;
         if root.is_token || root.parent.is_some() {
             return Err("entry 0 is not a root node".into());
         }
@@ -116,7 +171,7 @@ impl SyntaxTree {
             let end = token.start.checked_add(token.len).ok_or("overflow")?;
             if token.start != offset
                 || self
-                    .text
+                    .text()
                     .get(token.start.to_usize()..end.to_usize())
                     .is_none()
             {
@@ -135,8 +190,8 @@ impl fmt::Debug for SyntaxTree {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Shows the size, not the storage, which stays private.
         f.debug_struct("SyntaxTree")
-            .field("text_len", &self.text.len())
-            .field("elements", &self.entries.len())
+            .field("text_len", &self.data.text.len())
+            .field("elements", &self.data.entries.len())
             .finish()
     }
 }
