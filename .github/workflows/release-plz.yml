@@ -24,3 +24,5 @@ jobs:
       RELEASE_PLZ_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
       DISCORD_RELEASE_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
       DISCORD_RELEASE_WEBHOOK_ALL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_ALL }}
+    with:
+      announce: true
