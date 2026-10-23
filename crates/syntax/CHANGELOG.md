@@ -9,10 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.2](https://github.com/lang198x/syntax/compare/lang198x-syntax-v0.1.1...lang198x-syntax-v0.1.2) - 2026-10-23
 
+Provenance arrives. When a front end expands a macro or an include, it can
+now record where each piece of the new text came from, and follow those
+records back to the file a person wrote. A diagnostic inside an expansion can
+then point at the macro body and at every call that led there. The crate
+still has no runtime dependencies, and nothing changes for existing users.
+
 ### Added
 
-- trace expanded text back to the file a person wrote
-- record where each piece of expanded text came from
+- `FileId`, `ExpansionId`, `TextId` and `Span`, which name a range in a source
+  file or in an expansion.
+- `Origin`, which says where a piece of expanded text came from: `Source`
+  (copied from a text), `Included` (with the `INCLUDE` that brought it in) or
+  `Expanded` (from a macro body or argument, with the call). More kinds can be
+  added later without a breaking change.
+- `ExpansionBuilder` and `Expansion`. The builder appends pieces of text, each
+  with its origin, and returns the text with a table that covers it exactly.
+  `origin_at` and `pieces` look up what came from where. A copied piece must
+  be as long as the span it came from.
+- `Provenance`, a registry that numbers expansions as they are added. It
+  refuses an expansion that points at itself or at a later one, so every chain
+  ends at a file. `trace` follows a span back to the file it was written in,
+  and `sites` lists the calls and includes that brought it in, innermost
+  first.
+- `ProvenanceError`, for each of those refusals.
+
+A property test builds random files, then random nested expansions that copy
+real text from them, and checks that every byte traces back to the same
+character in a file.
 
 ## [0.1.1](https://github.com/lang198x/syntax/compare/lang198x-syntax-v0.1.0...lang198x-syntax-v0.1.1) - 2026-10-23
 
