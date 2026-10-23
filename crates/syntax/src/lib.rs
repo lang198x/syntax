@@ -36,7 +36,8 @@ pub use diagnostic::{Diagnostic, DiagnosticKind, DiagnosticOutsideText, Parse};
 pub use kind::SyntaxKind;
 pub use node::{SyntaxElement, SyntaxNode, SyntaxToken, TokenAtOffset};
 pub use provenance::{
-    Expansion, ExpansionBuilder, ExpansionId, FileId, Origin, ProvenanceError, Span, TextId,
+    Expansion, ExpansionBuilder, ExpansionId, FileId, Origin, Provenance, ProvenanceError, Span,
+    TextId,
 };
 pub use snapshot::{BLESS_VARIABLE, SnapshotError, check_snapshot};
 pub use text::{TextRange, TextSize};
