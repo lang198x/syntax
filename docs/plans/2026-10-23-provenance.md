@@ -1,6 +1,6 @@
 # Plan: provenance tables
 
-**Status:** Agreed 2026-10-23. Steps 1 and 2 are done.
+**Status:** Done. All three steps landed on 2026-10-23, released in 0.1.2.
 **Design:** [shared syntax layer decision](https://github.com/lang198x/lang198x/blob/main/decisions/shared-syntax-layer.md),
 under *Provenance is tracked by character range*.
 **First consumer:** step 4 of the
@@ -88,7 +88,12 @@ uses it.
   file. Four deliberately broken versions of `trace`, `add` and `sites` are
   each caught.
 
-### 3. Release
+### 3. Release (done)
 
 - **What:** release-plz publishes the new version. The changelog is written
   before the release pull request merges.
+- **As built:** published as 0.1.2. The Discord announcement went out without
+  its notes, as 0.1.1's had: the shared announcement script looked for
+  `crates/lang198x-syntax/CHANGELOG.md`, but the crate lives in
+  `crates/syntax`. The script now finds a crate by its package name
+  (stevehill1981/198x-workflows#9).
