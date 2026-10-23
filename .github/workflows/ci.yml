@@ -24,3 +24,19 @@ jobs:
       # A tree every front end relies on should be close to fully tested.
       # Ratchet up as tests grow; never down.
       coverage-floor: 95
+
+  # Pull requests do not fuzz: a time-boxed run is not repeatable, so it could
+  # fail a pull request that did not cause the problem. Fuzzing runs weekly in
+  # fuzz.yml instead, and every crash it finds becomes a seed or unit test that
+  # the ordinary tests run here. This job only keeps the fuzz targets building
+  # against the current API, with an up-to-date lockfile.
+  fuzz-targets:
+    name: Fuzz targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Check the fuzz targets build
+        run: cargo check --manifest-path fuzz/Cargo.toml --locked --bins
