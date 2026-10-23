@@ -1,0 +1,31 @@
+# Fuzz targets for lang198x-syntax, run with cargo-fuzz on a pinned nightly.
+# A separate workspace, so its dependencies never reach the library.
+[package]
+name = "lang198x-syntax-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+lang198x-syntax = { path = "../crates/syntax" }
+
+[[bin]]
+name = "builder_calls"
+path = "fuzz_targets/builder_calls.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "toy_lexer"
+path = "fuzz_targets/toy_lexer.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+members = ["."]

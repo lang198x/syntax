@@ -1,0 +1,2 @@
+start: ld a,(b+1) ; load
+	ret

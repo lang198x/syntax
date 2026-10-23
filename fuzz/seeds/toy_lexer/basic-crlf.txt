@@ -1,0 +1,2 @@
+10 PRINT "HI";A+B
+20 GOTO 10
