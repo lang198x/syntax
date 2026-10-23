@@ -13,11 +13,13 @@
 //! The crate is at an early stage. Today it provides text positions and
 //! ranges, which everything else is measured in, the kinds that label every
 //! node and token, the tree with its builder, and the handles that move
-//! around a finished tree. Diagnostics follow.
+//! around a finished tree, and diagnostics kept beside it. Snapshot dumps
+//! for testing follow.
 //!
 //! [shared syntax layer decision]: https://github.com/lang198x/lang198x/blob/main/decisions/shared-syntax-layer.md
 
 mod builder;
+mod diagnostic;
 mod kind;
 mod node;
 mod text;
@@ -27,6 +29,7 @@ mod tree;
 mod test_support;
 
 pub use builder::{BuildError, Checkpoint, TreeBuilder};
+pub use diagnostic::{Diagnostic, DiagnosticKind, DiagnosticOutsideText, Parse};
 pub use kind::SyntaxKind;
 pub use node::{SyntaxElement, SyntaxNode, SyntaxToken, TokenAtOffset};
 pub use text::{TextRange, TextSize};
