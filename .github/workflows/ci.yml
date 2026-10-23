@@ -38,5 +38,11 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # A release raises this crate's own version, which the fuzz lockfile
+      # also records. Only that entry is brought in line before the --locked
+      # check, so drift in any other dependency still fails.
       - name: Check the fuzz targets build
-        run: cargo check --manifest-path fuzz/Cargo.toml --locked --bins
+        run: |
+          version=$(cargo pkgid --manifest-path crates/syntax/Cargo.toml | sed 's/.*[@#]//')
+          sed -i "/^name = \"lang198x-syntax\"\$/{n;s/^version = .*/version = \"$version\"/}" fuzz/Cargo.lock
+          cargo check --manifest-path fuzz/Cargo.toml --locked --bins
