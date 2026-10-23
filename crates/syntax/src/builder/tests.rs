@@ -1,17 +1,7 @@
 use proptest::prelude::*;
 
 use super::*;
-
-fn kind(offset: u16) -> SyntaxKind {
-    let Some(kind) = SyntaxKind::language(SyntaxKind::FIRST_LANGUAGE + offset) else {
-        panic!("offset {offset} is outside the reserved range");
-    };
-    kind
-}
-
-fn size(raw: u32) -> TextSize {
-    TextSize::new(raw)
-}
+use crate::test_support::{build_well_formed, joined, kind, size};
 
 fn build(text: &str, calls: impl FnOnce(&mut TreeBuilder<'_>)) -> Result<SyntaxTree, BuildError> {
     let mut builder = TreeBuilder::new(text);
@@ -28,18 +18,6 @@ fn ok(result: Result<SyntaxTree, BuildError>) -> SyntaxTree {
         panic!("the builder made a broken tree: {problem}");
     }
     tree
-}
-
-/// The text of every token, in order.
-fn joined(tree: &SyntaxTree) -> String {
-    tree.entries()
-        .iter()
-        .filter(|entry| entry.is_token)
-        .map(|entry| {
-            let end = entry.start.to_usize() + entry.len.to_usize();
-            &tree.text()[entry.start.to_usize()..end]
-        })
-        .collect()
 }
 
 /// Each entry as (kind offset, start, length, parent), for comparing shapes.
@@ -558,54 +536,6 @@ fn run_calls(text: &str, calls: &[Call], complete: bool) -> Result<SyntaxTree, B
         for _ in 0..builder.open.len() {
             builder.finish_node();
         }
-    }
-    builder.finish()
-}
-
-/// Drives the builder with calls that are always valid, steered by `choices`:
-/// one token per character, with nodes opened, closed and wrapped around them
-/// at random.
-fn build_well_formed(text: &str, choices: &[u8]) -> Result<SyntaxTree, BuildError> {
-    let mut choices = choices.iter().copied().cycle().chain(std::iter::repeat(0));
-    let mut next = move || choices.next().unwrap_or(0);
-    let mut builder = TreeBuilder::new(text);
-    let root = builder.checkpoint();
-    builder.start_node(kind(0));
-    // Checkpoints taken at each open depth; closing a node drops its own.
-    let mut levels: Vec<Vec<Checkpoint>> = vec![Vec::new()];
-    for ch in text.chars() {
-        match next() {
-            0 | 1 => {
-                builder.start_node(kind(1));
-                levels.push(Vec::new());
-            }
-            2 if levels.len() > 1 => {
-                builder.finish_node();
-                levels.pop();
-            }
-            3 => {
-                if let Some(level) = levels.last_mut() {
-                    level.push(builder.checkpoint());
-                }
-            }
-            4 => {
-                let checkpoint = levels.last().and_then(|level| level.first().copied());
-                if let Some(checkpoint) = checkpoint {
-                    builder.start_node_at(checkpoint, kind(2));
-                    levels.push(Vec::new());
-                }
-            }
-            _ => {}
-        }
-        let len = u32::try_from(ch.len_utf8()).unwrap_or(0);
-        builder.token(kind(3), size(len));
-    }
-    for _ in 0..levels.len() {
-        builder.finish_node();
-    }
-    if next() % 2 == 0 {
-        builder.start_node_at(root, kind(4));
-        builder.finish_node();
     }
     builder.finish()
 }
