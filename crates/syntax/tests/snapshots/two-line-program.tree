@@ -1,0 +1,22 @@
+PROGRAM@0..26
+  LINE@0..21
+    LABEL@0..6
+      27@0..5 "start"
+      COLON@5..6 ":"
+    WHITESPACE@6..7 " "
+    MNEMONIC@7..9 "ld"
+    WHITESPACE@9..10 " "
+    OPERANDS@10..15
+      REGISTER@10..11 "a"
+      COMMA@11..12 ","
+      SUM@12..15
+        NUMBER@12..13 "1"
+        PLUS@13..14 "+"
+        NUMBER@14..15 "2"
+    WHITESPACE@15..16 " "
+    COMMENT@16..20 "; go"
+    NEWLINE@20..21 "\n"
+  LINE@21..26
+    WHITESPACE@21..22 "\t"
+    MNEMONIC@22..25 "ret"
+    NEWLINE@25..26 "\n"
