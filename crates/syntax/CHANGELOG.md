@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/lang198x/syntax/compare/lang198x-syntax-v0.1.1...lang198x-syntax-v0.1.2) - 2026-10-23
+
+### Added
+
+- trace expanded text back to the file a person wrote
+- record where each piece of expanded text came from
+
 ## [0.1.1](https://github.com/lang198x/syntax/compare/lang198x-syntax-v0.1.0...lang198x-syntax-v0.1.1) - 2026-10-23
 
 The tree itself arrives. A parser builds a lossless syntax tree through
