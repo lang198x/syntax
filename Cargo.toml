@@ -1,0 +1,33 @@
+# lang198x-syntax — the shared lossless syntax tree that every Lang198x
+# language front end builds on.
+#
+# The design is recorded in Lang198x's shared syntax layer decision:
+# https://github.com/lang198x/lang198x/blob/main/decisions/shared-syntax-layer.md
+#
+# The crate has no runtime dependencies, and that is a rule, not an accident.
+# Adding one is a drift trigger in the decision record.
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+license = "GPL-2.0-or-later"
+repository = "https://github.com/lang198x/syntax"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "deny"
+missing_docs = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+unwrap_used = "deny"
+
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
