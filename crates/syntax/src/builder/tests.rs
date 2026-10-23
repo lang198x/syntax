@@ -294,6 +294,53 @@ fn a_checkpoint_used_after_its_node_closed_is_stale() {
 }
 
 #[test]
+fn a_checkpoint_is_stale_once_something_before_it_is_wrapped() {
+    // Found by `any_calls_give_a_valid_tree_or_an_error`. `after_inner` is
+    // taken after INNER closes. Wrapping INNER from the older `before_inner`
+    // moves INNER inside OUTER, so `after_inner` no longer marks a place
+    // among ROOT's children.
+    let result = build("", |b| {
+        b.start_node(kind(0));
+        let before_inner = b.checkpoint();
+        b.start_node(kind(1));
+        b.finish_node();
+        let after_inner = b.checkpoint();
+        b.start_node_at(before_inner, kind(2));
+        b.finish_node();
+        b.start_node_at(after_inner, kind(3));
+    });
+    assert_eq!(result, Err(BuildError::StaleCheckpoint { offset: size(0) }));
+}
+
+#[test]
+fn a_checkpoint_at_the_end_still_works_after_a_wrap_before_it_closes() {
+    // Wrapping from an older checkpoint is fine when nothing was saved after
+    // it: the new node simply takes everything since.
+    let tree = ok(build("ab", |b| {
+        b.start_node(kind(0));
+        let start = b.checkpoint();
+        b.token(kind(5), size(1));
+        b.start_node_at(start, kind(1));
+        b.finish_node();
+        let after = b.checkpoint();
+        b.token(kind(5), size(1));
+        b.start_node_at(after, kind(2));
+        b.finish_node();
+        b.finish_node();
+    }));
+    assert_eq!(
+        shape(&tree),
+        [
+            (0, 0, 2, None),
+            (1, 0, 1, Some(0)),
+            (5, 0, 1, Some(1)),
+            (2, 1, 1, Some(0)),
+            (5, 1, 1, Some(3)),
+        ]
+    );
+}
+
+#[test]
 fn a_checkpoint_from_another_builder_cannot_break_the_tree() {
     // The other builder's checkpoint matches this builder's depth and open
     // node, but points before that node.
