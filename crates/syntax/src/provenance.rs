@@ -172,6 +172,19 @@ pub enum ProvenanceError {
     },
     /// The expansion's text is longer than 4 GiB.
     TextTooLong,
+    /// An expansion points at itself or at a later expansion. Pointing only
+    /// backwards is what guarantees every chain of origins ends.
+    ForwardReference {
+        /// The span that points forwards.
+        span: Span,
+    },
+    /// A span runs past the end of the expansion it points into.
+    OutsideText {
+        /// The span that runs past the end.
+        span: Span,
+    },
+    /// The registry already holds more than four billion expansions.
+    TooManyExpansions,
 }
 
 impl fmt::Display for ProvenanceError {
@@ -187,6 +200,18 @@ impl fmt::Display for ProvenanceError {
                  but the span it was copied from is {span}"
             ),
             Self::TextTooLong => f.write_str("the expansion is longer than 4 GiB"),
+            Self::ForwardReference { span } => write!(
+                f,
+                "a span points at {:?}, which is not an earlier expansion",
+                span.text()
+            ),
+            Self::OutsideText { span } => write!(
+                f,
+                "a span at {} runs past the end of {:?}",
+                span.range(),
+                span.text()
+            ),
+            Self::TooManyExpansions => f.write_str("there are more than four billion expansions"),
         }
     }
 }
@@ -321,6 +346,157 @@ impl ExpansionBuilder {
                 pieces: self.pieces,
             }),
         }
+    }
+}
+
+/// Every expansion made so far, and the means to trace them back.
+///
+/// Expansions are numbered in the order they are added. An expansion may
+/// point only at files and at expansions added before it, so following
+/// origins backwards always ends, at a file.
+///
+/// ```
+/// use lang198x_syntax::{
+///     ExpansionBuilder, FileId, Origin, Provenance, Span, TextId, TextRange, TextSize,
+/// };
+///
+/// let span = |text, start, end| {
+///     TextRange::new(TextSize::new(start), TextSize::new(end)).map(|r| Span::new(text, r))
+/// };
+/// let main = TextId::File(FileId::new(0));
+/// let mut provenance = Provenance::new();
+///
+/// // `outer` at 40..45 expands to ` inner`, copied from its body at 20..26.
+/// let mut builder = ExpansionBuilder::new();
+/// let call = span(main, 40, 45).expect("a range");
+/// builder.push(" inner", Origin::Expanded { from: span(main, 20, 26).expect("a range"), call_site: call });
+/// let outer = TextId::Expansion(provenance.add(builder.finish()?)?);
+///
+/// // That ` inner` call expands to ` db 1`, copied from inner's body at 6..11.
+/// let mut builder = ExpansionBuilder::new();
+/// let call = span(outer, 0, 6).expect("a range");
+/// builder.push(" db 1", Origin::Expanded { from: span(main, 6, 11).expect("a range"), call_site: call });
+/// let inner = TextId::Expansion(provenance.add(builder.finish()?)?);
+///
+/// // `db` in the inner expansion was written at 7..9 in the file...
+/// let db = span(inner, 1, 3).expect("a range");
+/// assert_eq!(provenance.trace(db), span(main, 7, 9));
+/// // ...and arrived through the ` inner` call, inside the `outer` call.
+/// assert_eq!(provenance.sites(db), [span(outer, 0, 6), span(main, 40, 45)].map(|s| s.expect("a range")));
+/// # Ok::<(), lang198x_syntax::ProvenanceError>(())
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct Provenance {
+    expansions: Vec<Expansion>,
+}
+
+impl Provenance {
+    /// Starts an empty registry.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Adds an expansion and returns its ID.
+    ///
+    /// # Errors
+    ///
+    /// Refuses an expansion with a span that points at itself or at a later
+    /// expansion, or past the end of an earlier one.
+    pub fn add(&mut self, expansion: Expansion) -> Result<ExpansionId, ProvenanceError> {
+        let id = u32::try_from(self.expansions.len())
+            .map(ExpansionId)
+            .map_err(|_| ProvenanceError::TooManyExpansions)?;
+        for &(_, origin) in &expansion.pieces {
+            for span in [origin.copied_from(), origin.site()].into_iter().flatten() {
+                self.check(span)?;
+            }
+        }
+        self.expansions.push(expansion);
+        Ok(id)
+    }
+
+    /// Returns the expansion with this ID, if it has been added.
+    #[must_use]
+    pub fn get(&self, id: ExpansionId) -> Option<&Expansion> {
+        usize::try_from(id.get())
+            .ok()
+            .and_then(|index| self.expansions.get(index))
+    }
+
+    /// Follows `span` back to the file its text was written in.
+    ///
+    /// Each step finds the piece of the expansion that holds the span and
+    /// moves to where that piece was copied from. Returns `None` if the span
+    /// crosses from one piece into another at any step, since no single place
+    /// wrote it; [`Expansion::pieces`] splits such a span. Also returns
+    /// `None` if the span is outside its expansion.
+    #[must_use]
+    pub fn trace(&self, span: Span) -> Option<Span> {
+        let mut span = span;
+        loop {
+            let TextId::Expansion(id) = span.text() else {
+                return Some(span);
+            };
+            let (piece, origin) = self.piece_holding(id, span.range())?;
+            let from = origin.copied_from()?;
+            let start = from
+                .range()
+                .start()
+                .checked_add(span.range().start().checked_sub(piece.start())?)?;
+            let range = TextRange::at(start, span.range().len())?;
+            span = Span::new(from.text(), range);
+        }
+    }
+
+    /// Returns the includes and macro calls that brought `span` in, innermost
+    /// first. A span in a file has none.
+    ///
+    /// The span's start decides which piece it belongs to. At each step, the
+    /// next place to look is the site, or, for a plain copy, where the piece
+    /// was copied from.
+    #[must_use]
+    pub fn sites(&self, span: Span) -> Vec<Span> {
+        let mut sites = Vec::new();
+        let mut at = span;
+        while let TextId::Expansion(id) = at.text() {
+            let Some((_, origin)) = self
+                .get(id)
+                .and_then(|expansion| expansion.piece_at(at.range().start()))
+            else {
+                break;
+            };
+            let next = match (origin.site(), origin.copied_from()) {
+                (Some(site), _) => {
+                    sites.push(site);
+                    site
+                }
+                (None, Some(from)) => from,
+                (None, None) => break,
+            };
+            at = next;
+        }
+        sites
+    }
+
+    /// Checks that `span` points at a file, or inside an earlier expansion.
+    fn check(&self, span: Span) -> Result<(), ProvenanceError> {
+        let TextId::Expansion(id) = span.text() else {
+            return Ok(());
+        };
+        let target = self
+            .get(id)
+            .ok_or(ProvenanceError::ForwardReference { span })?;
+        if span.range().end() > target.len() {
+            return Err(ProvenanceError::OutsideText { span });
+        }
+        Ok(())
+    }
+
+    /// The piece of expansion `id` that holds all of `range`.
+    fn piece_holding(&self, id: ExpansionId, range: TextRange) -> Option<(TextRange, Origin)> {
+        let (piece, origin) = self.get(id)?.piece_at(range.start())?;
+        piece.contains_range(range).then_some((piece, origin))
     }
 }
 

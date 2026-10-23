@@ -186,6 +186,184 @@ fn errors_describe_themselves() {
     assert!(error.source().is_none());
 }
 
+fn expansion_id(text: TextId) -> ExpansionId {
+    match text {
+        TextId::Expansion(id) => id,
+        TextId::File(_) => panic!("not an expansion"),
+    }
+}
+
+/// `main` calls `outer` at 40..45, whose body calls `inner`, whose body is
+/// `db 1` and includes a library line.
+fn nested() -> (Provenance, TextId, TextId) {
+    let mut provenance = Provenance::new();
+    let call = span(MAIN, 40, 45);
+    let outer = built(&[(
+        " inner\n",
+        Origin::Expanded {
+            from: span(MAIN, 20, 27),
+            call_site: call,
+        },
+    )])
+    .expect("an expansion");
+    let outer = TextId::Expansion(provenance.add(outer).expect("added"));
+    let call = span(outer, 0, 6);
+    let include_site = span(MAIN, 12, 30);
+    let inner = built(&[
+        (
+            " db 1\n",
+            Origin::Expanded {
+                from: span(MAIN, 6, 12),
+                call_site: call,
+            },
+        ),
+        (
+            "ret",
+            Origin::Included {
+                from: span(LIB, 4, 7),
+                site: include_site,
+            },
+        ),
+    ])
+    .expect("an expansion");
+    let inner = TextId::Expansion(provenance.add(inner).expect("added"));
+    (provenance, outer, inner)
+}
+
+#[test]
+fn tracing_a_nested_expansion_reaches_the_file() {
+    let (provenance, outer, inner) = nested();
+    assert_eq!(expansion_id(outer).get(), 0);
+    assert_eq!(expansion_id(inner).get(), 1);
+    assert_eq!(
+        provenance.get(expansion_id(inner)).map(Expansion::text),
+        Some(" db 1\nret")
+    );
+    assert!(provenance.get(ExpansionId::new(2)).is_none());
+
+    assert_eq!(provenance.trace(span(inner, 1, 3)), Some(span(MAIN, 7, 9)));
+    assert_eq!(provenance.trace(span(inner, 6, 9)), Some(span(LIB, 4, 7)));
+    assert_eq!(
+        provenance.trace(span(inner, 9, 9)),
+        None,
+        "the end of the text holds no piece"
+    );
+    assert_eq!(
+        provenance.trace(span(outer, 1, 6)),
+        Some(span(MAIN, 21, 26))
+    );
+    assert_eq!(provenance.trace(span(MAIN, 3, 4)), Some(span(MAIN, 3, 4)));
+}
+
+#[test]
+fn a_span_across_two_pieces_has_no_single_origin() {
+    let (provenance, _, inner) = nested();
+    assert_eq!(provenance.trace(span(inner, 4, 8)), None);
+    let parts: Vec<_> = provenance
+        .get(expansion_id(inner))
+        .map(|e| e.pieces(range(4, 8)).map(|(r, _)| r).collect())
+        .unwrap_or_default();
+    assert_eq!(parts, [range(0, 6), range(6, 9)]);
+}
+
+#[test]
+fn sites_run_from_the_innermost_call_outwards() {
+    let (provenance, outer, inner) = nested();
+    assert_eq!(
+        provenance.sites(span(inner, 1, 3)),
+        [span(outer, 0, 6), span(MAIN, 40, 45)]
+    );
+    assert_eq!(provenance.sites(span(inner, 6, 9)), [span(MAIN, 12, 30)]);
+    assert_eq!(provenance.sites(span(outer, 0, 1)), [span(MAIN, 40, 45)]);
+    assert_eq!(provenance.sites(span(MAIN, 0, 1)), []);
+    assert_eq!(
+        provenance.sites(span(inner, 50, 51)),
+        [],
+        "outside the text"
+    );
+}
+
+#[test]
+fn a_plain_copy_of_an_expansion_passes_its_sites_through() {
+    let (mut provenance, _, inner) = nested();
+    let copy = built(&[(
+        "db",
+        Origin::Source {
+            from: span(inner, 1, 3),
+        },
+    )])
+    .expect("an expansion");
+    let copy = TextId::Expansion(provenance.add(copy).expect("added"));
+    assert_eq!(provenance.trace(span(copy, 0, 2)), Some(span(MAIN, 7, 9)));
+    assert_eq!(provenance.sites(span(copy, 0, 2)).len(), 2);
+}
+
+#[test]
+fn an_expansion_may_point_only_backwards_and_inside() {
+    let mut provenance = Provenance::new();
+    let itself = span(TextId::Expansion(ExpansionId::new(0)), 0, 1);
+    let refused = built(&[("a", Origin::Source { from: itself })]).expect("an expansion");
+    assert_eq!(
+        provenance.add(refused),
+        Err(ProvenanceError::ForwardReference { span: itself })
+    );
+
+    let first = built(&[(
+        "ab",
+        Origin::Source {
+            from: span(MAIN, 0, 2),
+        },
+    )])
+    .expect("an expansion");
+    let first = TextId::Expansion(provenance.add(first).expect("added"));
+    let past_end = span(first, 1, 3);
+    let refused = built(&[("xy", Origin::Source { from: past_end })]).expect("an expansion");
+    assert_eq!(
+        provenance.add(refused),
+        Err(ProvenanceError::OutsideText { span: past_end })
+    );
+
+    let forward_site = span(TextId::Expansion(ExpansionId::new(5)), 0, 0);
+    let refused = built(&[(
+        "c",
+        Origin::Expanded {
+            from: span(first, 0, 1),
+            call_site: forward_site,
+        },
+    )])
+    .expect("an expansion");
+    assert_eq!(
+        provenance.add(refused),
+        Err(ProvenanceError::ForwardReference { span: forward_site })
+    );
+    assert!(
+        provenance.get(ExpansionId::new(1)).is_none(),
+        "refused expansions are not added"
+    );
+}
+
+#[test]
+fn registry_errors_describe_themselves() {
+    let forward = ProvenanceError::ForwardReference {
+        span: span(TextId::Expansion(ExpansionId::new(3)), 0, 1),
+    };
+    assert_eq!(
+        forward.to_string(),
+        "a span points at Expansion(ExpansionId(3)), which is not an earlier expansion"
+    );
+    let outside = ProvenanceError::OutsideText {
+        span: span(TextId::Expansion(ExpansionId::new(0)), 1, 3),
+    };
+    assert_eq!(
+        outside.to_string(),
+        "a span at 1..3 runs past the end of Expansion(ExpansionId(0))"
+    );
+    assert_eq!(
+        ProvenanceError::TooManyExpansions.to_string(),
+        "there are more than four billion expansions"
+    );
+}
+
 /// A random origin whose span is `len` bytes long.
 fn origin(kind: u8, text: u8, start: u32, len: u32) -> Origin {
     let from = Span::new(
@@ -246,5 +424,74 @@ proptest! {
             })
             .collect();
         prop_assert_eq!(expansion.pieces(query).collect::<Vec<_>>(), linear);
+    }
+}
+
+/// One step of building a random expansion: copy `len` bytes starting at
+/// `start` from text number `source`, scaled to fit what exists.
+#[derive(Debug, Clone)]
+struct Copy {
+    source: usize,
+    start: usize,
+    len: usize,
+    kind: u8,
+}
+
+proptest! {
+    /// Expansions that really copy text from files and earlier expansions
+    /// trace back to the very characters they copied, and every chain ends
+    /// in a file.
+    #[test]
+    fn tracing_lands_on_the_characters_that_were_copied(
+        files in prop::collection::vec("[a-z ]{1,30}", 1..4),
+        plans in prop::collection::vec(
+            prop::collection::vec(
+                (0usize..100, 0usize..100, 1usize..8, 0u8..3).prop_map(|(source, start, len, kind)| Copy { source, start, len, kind }),
+                1..6,
+            ),
+            1..6,
+        ),
+    ) {
+        let mut provenance = Provenance::new();
+        // Texts so far: files first, then each expansion as it is added.
+        let mut texts: Vec<(TextId, String)> = files
+            .iter()
+            .enumerate()
+            .map(|(i, text)| (TextId::File(FileId::new(u32::try_from(i).expect("few"))), text.clone()))
+            .collect();
+        for plan in &plans {
+            let mut builder = ExpansionBuilder::new();
+            for copy in plan {
+                let (source, text) = &texts[copy.source % texts.len()];
+                let start = copy.start % text.len();
+                let len = copy.len.min(text.len() - start);
+                let piece = &text[start..start + len];
+                let from = span(*source, u32::try_from(start).expect("short"), u32::try_from(start + len).expect("short"));
+                let site = span(texts[copy.start % texts.len()].0, 0, 0);
+                let origin = match copy.kind {
+                    0 => Origin::Source { from },
+                    1 => Origin::Included { from, site },
+                    _ => Origin::Expanded { from, call_site: site },
+                };
+                builder.push(piece, origin);
+            }
+            let expansion = builder.finish().expect("copied pieces match their spans");
+            let text = expansion.text().to_owned();
+            let id = provenance.add(expansion).expect("only backward references");
+            texts.push((TextId::Expansion(id), text));
+        }
+
+        let file_text = |id: TextId| texts.iter().find(|(t, _)| *t == id).map(|(_, s)| s.as_str());
+        for (id, text) in texts.iter().filter(|(t, _)| matches!(t, TextId::Expansion(_))) {
+            for at in 0..text.len() {
+                let at32 = u32::try_from(at).expect("short");
+                let traced = provenance.trace(span(*id, at32, at32 + 1));
+                let traced = traced.expect("one byte always sits inside one piece");
+                prop_assert!(matches!(traced.text(), TextId::File(_)));
+                let written = file_text(traced.text()).and_then(|t| traced.range().slice(t));
+                prop_assert_eq!(written, Some(&text[at..=at]));
+                prop_assert!(provenance.sites(span(*id, at32, at32 + 1)).len() <= plans.len() * 6);
+            }
+        }
     }
 }

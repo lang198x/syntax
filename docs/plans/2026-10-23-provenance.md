@@ -1,6 +1,6 @@
 # Plan: provenance tables
 
-**Status:** Agreed 2026-10-23. Step 1 is done.
+**Status:** Agreed 2026-10-23. Steps 1 and 2 are done.
 **Design:** [shared syntax layer decision](https://github.com/lang198x/lang198x/blob/main/decisions/shared-syntax-layer.md),
 under *Provenance is tracked by character range*.
 **First consumer:** step 4 of the
@@ -71,7 +71,7 @@ uses it.
   because `TextRange` has none. Three deliberately broken lookups and checks
   are each caught by the tests.
 
-### 2. The registry and tracing
+### 2. The registry and tracing (done)
 
 - **Files:** the same module.
 - **What:** `Provenance`, with `add`, `get`, `trace` and `sites`.
@@ -79,6 +79,14 @@ uses it.
   macro, an include inside a macro), refusals of forward and self references,
   and a property that tracing any offset in a randomly nested set of
   expansions ends in a file, at the offset the pieces imply.
+- **As built:** `trace` returns `None` for a span that crosses pieces, since no
+  one place wrote it; `Expansion::pieces` splits such a span first. `sites`
+  follows each piece's site, or, for a plain copy, where it was copied from,
+  so a copy of an expanded text keeps its calls. The property builds random
+  files, then random expansions that really copy text from files and earlier
+  expansions, and checks that every byte traces to the same character in a
+  file. Four deliberately broken versions of `trace`, `add` and `sites` are
+  each caught.
 
 ### 3. Release
 
