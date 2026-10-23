@@ -83,7 +83,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          title="Scheduled fuzzing found a crash"
+          title="Fuzzing found a crash"
           body="A fuzz run failed: $RUN_URL. The crashing input is attached to the run as an artifact. Reproduce it with cargo +nightly-2026-09-24 fuzz run <target> <file>, fix it, and add the input as a seed or unit test."
           existing=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
