@@ -1,6 +1,7 @@
 # lang198x-syntax
 
 [![CI](https://github.com/lang198x/syntax/actions/workflows/ci.yml/badge.svg)](https://github.com/lang198x/syntax/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/lang198x-syntax.svg)](https://crates.io/crates/lang198x-syntax)
 
 The shared lossless syntax tree for [Lang198x](https://github.com/lang198x)
 language front ends.
@@ -20,7 +21,6 @@ records the design and the reasons for it.
 
 Early. Text positions and ranges are in place, and the tree itself is being
 built, following the [tree core plan](docs/plans/2026-10-23-tree-core.md).
-Nothing is published to crates.io yet.
 
 ## Design in brief
 
