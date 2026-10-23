@@ -57,7 +57,9 @@ pub struct TreeBuilder<'t> {
 /// calls [`TreeBuilder::start_node_at`] to open the sum there.
 ///
 /// A checkpoint stays usable while the node that was open when it was taken
-/// is still the innermost open node.
+/// is still the innermost open node, and until something before the
+/// checkpoint is wrapped in a new node. Wrapping moves what followed inside
+/// the wrapper, so the saved place no longer exists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Checkpoint {
     index: u32,
@@ -100,8 +102,9 @@ pub enum BuildError {
         /// Where the second root would have started.
         offset: TextSize,
     },
-    /// A checkpoint was used after the node it relied on had closed, or it
-    /// came from a different builder.
+    /// A checkpoint was used after the node it relied on had closed, after
+    /// something before it was wrapped in a new node, or it came from a
+    /// different builder.
     StaleCheckpoint {
         /// Where the builder had got to.
         offset: TextSize,
@@ -289,14 +292,23 @@ impl<'t> TreeBuilder<'t> {
             return;
         }
         let at = checkpoint.index as usize;
-        // A checkpoint this builder made always passes. One from another
-        // builder might not, and must not be able to break the tree.
+        // The checkpoint must still mark a boundary between children of the
+        // innermost open node: either nothing has been added since, or the
+        // entry there is one of that node's children. Wrapping something in
+        // front of the checkpoint moves its entries inside the wrapper, which
+        // breaks that. A checkpoint from another builder must not be able to
+        // break the tree either.
         if checkpoint.depth != self.open.len()
             || checkpoint.parent != self.open.last().copied()
             || checkpoint
                 .parent
                 .is_some_and(|parent| parent >= checkpoint.index)
-            || at > self.entries.len()
+            || self
+                .entries
+                .get(at)
+                .map_or(at != self.entries.len(), |entry| {
+                    entry.parent != checkpoint.parent
+                })
         {
             return self.fail(BuildError::StaleCheckpoint { offset: self.pos });
         }
