@@ -11,13 +11,18 @@
 //! are in the [shared syntax layer decision].
 //!
 //! The crate is at an early stage. Today it provides text positions and
-//! ranges, which everything else is measured in, and the kinds that label
-//! every node and token. The tree itself follows.
+//! ranges, which everything else is measured in, the kinds that label every
+//! node and token, and the tree with its builder. Navigating a finished tree
+//! follows.
 //!
 //! [shared syntax layer decision]: https://github.com/lang198x/lang198x/blob/main/decisions/shared-syntax-layer.md
 
+mod builder;
 mod kind;
 mod text;
+mod tree;
 
+pub use builder::{BuildError, Checkpoint, TreeBuilder};
 pub use kind::SyntaxKind;
 pub use text::{TextRange, TextSize};
+pub use tree::SyntaxTree;
