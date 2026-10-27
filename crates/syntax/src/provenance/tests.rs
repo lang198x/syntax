@@ -50,6 +50,63 @@ fn each_origin_says_where_it_was_copied_from_and_why() {
         (expanded.copied_from(), expanded.site()),
         (Some(from), Some(site))
     );
+    assert_eq!(expanded.made_from(), None);
+    let synthesised = Origin::Synthesised {
+        inputs: from,
+        call_site: site,
+    };
+    assert_eq!(
+        (
+            synthesised.copied_from(),
+            synthesised.made_from(),
+            synthesised.site()
+        ),
+        (None, Some(from), Some(site))
+    );
+}
+
+#[test]
+fn synthesised_text_has_no_single_writer_but_keeps_its_call() {
+    // `.concat("a","b")` at 0..16 in the file makes `"ab"`, in a macro
+    // expansion whose call is at 40..45.
+    let call = span(MAIN, 40, 45);
+    let mut builder = ExpansionBuilder::new();
+    builder.push(
+        "\"ab\"",
+        Origin::Synthesised {
+            inputs: span(MAIN, 0, 16),
+            call_site: call,
+        },
+    );
+    builder.push(
+        " ;",
+        Origin::Expanded {
+            from: span(MAIN, 16, 18),
+            call_site: call,
+        },
+    );
+    let mut provenance = Provenance::new();
+    let id = provenance
+        .add(builder.finish().expect("a made-up piece may be any length"))
+        .expect("its spans point at the file");
+    let text = TextId::Expansion(id);
+    assert_eq!(provenance.trace(span(text, 0, 4)), None);
+    assert_eq!(provenance.trace(span(text, 4, 6)), Some(span(MAIN, 16, 18)));
+    assert_eq!(provenance.sites(span(text, 1, 2)), [call]);
+    // A synthesised piece's inputs must point backwards, too.
+    let mut builder = ExpansionBuilder::new();
+    builder.push(
+        "1",
+        Origin::Synthesised {
+            inputs: span(TextId::Expansion(ExpansionId::new(5)), 0, 1),
+            call_site: call,
+        },
+    );
+    let forward = provenance.add(builder.finish().expect("builds"));
+    assert!(matches!(
+        forward,
+        Err(ProvenanceError::ForwardReference { .. })
+    ));
 }
 
 #[test]
@@ -371,11 +428,15 @@ fn origin(kind: u8, text: u8, start: u32, len: u32) -> Origin {
         range(start, start + len),
     );
     let site = span(MAIN, 100, 110);
-    match kind % 3 {
+    match kind % 4 {
         0 => Origin::Source { from },
         1 => Origin::Included { from, site },
-        _ => Origin::Expanded {
+        2 => Origin::Expanded {
             from,
+            call_site: site,
+        },
+        _ => Origin::Synthesised {
+            inputs: from,
             call_site: site,
         },
     }
@@ -386,7 +447,7 @@ proptest! {
     /// whose lookups agree with a linear search through the pieces.
     #[test]
     fn lookups_agree_with_a_linear_search(
-        parts in prop::collection::vec(("[a-zé€ ]{0,6}", 0u8..3, 0u8..3, 0u32..50), 0..12),
+        parts in prop::collection::vec(("[a-zé€ ]{0,6}", 0u8..4, 0u8..3, 0u32..50), 0..12),
         probe in 0u32..80,
         probe_len in 0u32..20,
     ) {

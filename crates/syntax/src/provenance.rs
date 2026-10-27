@@ -131,18 +131,38 @@ pub enum Origin {
         /// The call being expanded.
         call_site: Span,
     },
+    /// Made up, not copied: the result of a token function such as ca65's
+    /// `.concat` or `.ident`, or text a front end supplies, such as a
+    /// macro's argument count. No one wrote this text as it stands.
+    Synthesised {
+        /// The text it was made from, covering every input: the whole
+        /// function call, or the word it stands for.
+        inputs: Span,
+        /// The call that made it: the function call, or the macro call being
+        /// expanded.
+        call_site: Span,
+    },
 }
 
 impl Origin {
     /// Returns where the piece was copied from, if it was copied unchanged.
-    /// Every origin so far is a copy; text made up by a token function will
-    /// not be.
+    /// A synthesised piece was not copied, so it has none.
     #[must_use]
     pub const fn copied_from(self) -> Option<Span> {
         match self {
             Self::Source { from } | Self::Included { from, .. } | Self::Expanded { from, .. } => {
                 Some(from)
             }
+            Self::Synthesised { .. } => None,
+        }
+    }
+
+    /// Returns the text a synthesised piece was made from, if it is one.
+    #[must_use]
+    pub const fn made_from(self) -> Option<Span> {
+        match self {
+            Self::Synthesised { inputs, .. } => Some(inputs),
+            _ => None,
         }
     }
 
@@ -152,7 +172,9 @@ impl Origin {
         match self {
             Self::Source { .. } => None,
             Self::Included { site, .. } => Some(site),
-            Self::Expanded { call_site, .. } => Some(call_site),
+            Self::Expanded { call_site, .. } | Self::Synthesised { call_site, .. } => {
+                Some(call_site)
+            }
         }
     }
 }
@@ -408,7 +430,8 @@ impl Provenance {
             .map(ExpansionId)
             .map_err(|_| ProvenanceError::TooManyExpansions)?;
         for &(_, origin) in &expansion.pieces {
-            for span in [origin.copied_from(), origin.site()].into_iter().flatten() {
+            let spans = [origin.copied_from(), origin.made_from(), origin.site()];
+            for span in spans.into_iter().flatten() {
                 self.check(span)?;
             }
         }
@@ -430,7 +453,9 @@ impl Provenance {
     /// moves to where that piece was copied from. Returns `None` if the span
     /// crosses from one piece into another at any step, since no single place
     /// wrote it; [`Expansion::pieces`] splits such a span. Also returns
-    /// `None` if the span is outside its expansion.
+    /// `None` if the span is outside its expansion, or lands in a synthesised
+    /// piece, which no one wrote; its [`Origin::made_from`] says what it was
+    /// made from instead.
     #[must_use]
     pub fn trace(&self, span: Span) -> Option<Span> {
         let mut span = span;

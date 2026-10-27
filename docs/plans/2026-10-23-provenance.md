@@ -32,6 +32,11 @@ uses it.
 
   The enum is non-exhaustive, so `Synthesised`, `Decoded` and `Merged` can be
   added when a language needs them, without breaking anyone.
+  - `Synthesised { inputs, call_site }` was added on 2026-10-27 for ca65:
+    text a token function made, such as `.concat`'s, or text a front end
+    supplies, such as a macro's argument count. `inputs` covers everything it
+    was made from. It is not a copy, so tracing stops there, and
+    `Origin::made_from` gives the inputs instead.
 - **Building.** An `ExpansionBuilder` appends pieces of text one at a time,
   each with its origin, and returns the text and its table together. The table
   therefore covers the text exactly, in order, with no gaps or overlaps. A
