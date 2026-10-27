@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/lang198x/syntax/compare/lang198x-syntax-v0.1.2...lang198x-syntax-v0.1.3) - 2026-10-27
+
+### Added
+
+- add a Synthesised origin for made-up text
+
 ## [0.1.2](https://github.com/lang198x/syntax/compare/lang198x-syntax-v0.1.1...lang198x-syntax-v0.1.2) - 2026-10-23
 
 Provenance arrives. When a front end expands a macro or an include, it can
