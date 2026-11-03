@@ -31,6 +31,9 @@ built, following the [tree core plan](docs/plans/2026-10-23-tree-core.md).
   kept beside the tree.
 - **Provenance in side tables.** Every token produced by a macro, an include or
   a decoded native file can be traced back to the text a person wrote.
+- **Bytes in, text out, nothing lost.** A tool that reads source as bytes is
+  decoded with its character set, starting with Latin-1, into UTF-8 text and
+  a map back to the bytes. The exact bytes can always be rebuilt.
 
 ## Licence
 
