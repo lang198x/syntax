@@ -14,11 +14,13 @@
 //! ranges, which everything else is measured in, the kinds that label every
 //! node and token, the tree with its builder, and the handles that move
 //! around a finished tree, diagnostics kept beside it, provenance tables that
-//! record where expanded text came from, and snapshot dumps for testing.
+//! record where expanded text came from, a decoder that turns source bytes
+//! into text without losing any, and snapshot dumps for testing.
 //!
 //! [shared syntax layer decision]: https://github.com/lang198x/lang198x/blob/main/decisions/shared-syntax-layer.md
 
 mod builder;
+mod decode;
 mod diagnostic;
 mod dump;
 mod kind;
@@ -32,6 +34,7 @@ mod tree;
 mod test_support;
 
 pub use builder::{BuildError, Checkpoint, TreeBuilder};
+pub use decode::{CharSet, DecodeError, Decoded, EncodeError, decode, encode};
 pub use diagnostic::{Diagnostic, DiagnosticKind, DiagnosticOutsideText, Parse};
 pub use kind::SyntaxKind;
 pub use node::{SyntaxElement, SyntaxNode, SyntaxToken, TokenAtOffset};
